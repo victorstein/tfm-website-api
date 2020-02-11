@@ -1,48 +1,71 @@
-const SEOChecker = require('advanced-seo-checker');
+const lighthouse = require('lighthouse');
+const chromeLauncher = require('chrome-launcher');
+
+type test = {
+  title: string
+  description: string
+  score: number | string | null
+}
 
 type result = {
-  url: string
-  title: string
-  headers: {
-    h1: string[]
-    h2: string[]
-    h3: string[]
-    h4: string[]
-    h5: string[]
-    h6: string[]
-  }
-  description: string
-  scores: {
-    performance: {
-      score: number
-    }
-    accessibility: {
-      score: number
-    }
-    seo: {
-      score: number
-    }
-    isMobileFriendly: string
-  }
+  score: number
+  passed: test[]
+  failed: test[]
 }
 
 export default class CheckSEO {
   url: string
+  chromeOptions: any
+  lighthouseOptions: any
+  evaluationConfig: any
   
   constructor({
-    url = ''
+    url = '',
+    chromeOptions = {
+      chromeFlags: ['--headless']
+    },
+    lighthouseOptions = {
+      onlyCategories: ['seo']
+    },
+    evaluationConfig = {
+      output: ["json"],
+      extends: 'lighthouse:default'
+    }
   }){
     this.url = url
+    this.chromeOptions = chromeOptions
+    this.lighthouseOptions = lighthouseOptions
+    this.evaluationConfig = evaluationConfig
   }
 
-  async checkSEO () {
-    const crawler = SEOChecker(this.url, {});
-    return new Promise((resolve, reject) => {
-      crawler.analyze([this.url]).then((summary: any) => {
-        if (!summary.pages[0]) { reject('We were not able to collect data from your website') }
-        const response: result = summary.pages[0]
-        resolve(response)
-      });
+  async checkSEO (): Promise<result> {
+    return new Promise(async (resolve, reject): Promise<void> => {
+      try {
+        const chrome = await chromeLauncher.launch(this.chromeOptions)
+        this.lighthouseOptions.port = chrome.port
+        const { lhr: { audits, categories: { seo } } } = await lighthouse(this.url, this.lighthouseOptions, this.evaluationConfig)
+        await chrome.kill()
+        console.log(audits)
+        const result = {
+          score: seo.score * 100,
+          passed: Object.entries(audits).filter((u: any) => u[1].score * 100 > 80)
+            .map((u: any) => ({
+              title: u[1].title,
+              score: u[1].score * 100 || 'N/A',
+              description: u[1].description
+            })),
+          failed: Object.entries(audits).filter((u: any) => !u[1].score || u[1].score * 100 < 80)
+            .map((u: any) => ({
+              title: u[1].title,
+              score: u[1].score * 100,
+              description: u[1].description
+            }))
+        }
+        resolve(result)
+      } catch (e) {
+        console.log(e)
+        reject(e)
+      }
     })
   }
 }
