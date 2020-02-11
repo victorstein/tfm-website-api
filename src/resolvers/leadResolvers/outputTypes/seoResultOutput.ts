@@ -1,62 +1,22 @@
 import { ObjectType, Field } from "type-graphql";
+import { intOrStringScalar } from "../../../utils/reusableSnippets/customScalars";
 
 @ObjectType()
-class headers {
-  @Field(() => [String])
-  h1: string[]
-  @Field(() => [String])
-  h2: string[]
-  @Field(() => [String])
-  h3: string[]
-  @Field(() => [String])
-  h4: string[]
-  @Field(() => [String])
-  h5: string[]
-  @Field(() => [String])
-  h6: string[]
-}
-
-@ObjectType()
-class performance {
+class test {
   @Field()
-  score: number
-}
-
-@ObjectType()
-class accessibility extends performance {
-}
-
-@ObjectType()
-class seo extends performance {
-}
-
-@ObjectType()
-class scores {
+  title: string
   @Field()
-  performance: performance
-  @Field()
-  accessibility: accessibility
-  @Field()
-  seo: seo
+  description: string
+  @Field(() => intOrStringScalar, { nullable: true })
+  score: string | number | null
 }
 
 @ObjectType()
 export default class SEOResult {
   @Field()
-  url: string
-
-  @Field()
-  title: string
-
-  @Field(() => headers)
-  headers:headers
-  
-  @Field()
-  description: string
-  
-  @Field()
-  isMobileFriendly: string
-
-  @Field()
-  scores: scores
+  score: number
+  @Field(() => [test], { nullable: true })
+  passed: test[]
+  @Field(() => [test], { nullable: true })
+  failed: test[]
 }
