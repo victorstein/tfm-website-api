@@ -45,7 +45,6 @@ export default class CheckSEO {
         this.lighthouseOptions.port = chrome.port
         const { lhr: { audits, categories: { seo } } } = await lighthouse(this.url, this.lighthouseOptions, this.evaluationConfig)
         await chrome.kill()
-        console.log(audits)
         const result = {
           score: seo.score * 100,
           passed: Object.entries(audits).filter((u: any) => u[1].score * 100 > 80)
