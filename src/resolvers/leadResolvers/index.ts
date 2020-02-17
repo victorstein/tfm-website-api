@@ -1,4 +1,4 @@
-import { Resolver, Mutation, Args } from "type-graphql";
+import { Resolver, Mutation, Args, Subscription, Root, PubSub, PubSubEngine } from "type-graphql";
 import { Lead, leadModel } from "../../models/lead";
 import createLeadInterface from "./interfaces/createLeadInterface";
 import EmailProvider from "../../utils/emailProvider";
@@ -7,6 +7,7 @@ import createCRUDResolver from "../globalResolvers/crudBaseResolver";
 import CheckSEOInterface from "./interfaces/checkSEOInterface";
 import seoChecker from "../../utils/reusableSnippets/seoChecker";
 import SEOResult from "./outputTypes/seoResultOutput";
+import seoResultTypeInterface from "./interfaces/seoResultInputType";
 
 // Define the prefix of the resolvers
 const resolverName = 'Lead'
@@ -56,10 +57,19 @@ export default class LeadResolvers extends CRUDLead {
     return lead
   }
 
-  @Mutation(() => SEOResult)
+  @Mutation(() => String)
   async checkSEO (
-    @Args() { url, phoneNumber, email, name }: CheckSEOInterface
-  ): Promise<SEOResult> {
+    @Args() { url, phoneNumber, email, name }: CheckSEOInterface,
+    @PubSub() pubSub: PubSubEngine
+  ): Promise<string> {
+    // Create seo bot
+    const bot = new seoChecker({ url })
+
+    // check seo
+    bot.checkSEO().then((results) => {
+      pubSub.publish('SEO_NOTIFICATION', { ...results, email })
+    })
+
     // Create the lead
     const lead = await leadModel.create({
       email,
@@ -77,14 +87,20 @@ export default class LeadResolvers extends CRUDLead {
 
     // Send the email
     await emailTransporter.sendEmail()
-    
-    // Create seo bot
-    const bot = new seoChecker({ url })
 
-    // check seo
-    const results: any = await bot.checkSEO()
+    return email
+  }
 
-    return results
+  @Subscription(() => SEOResult, {
+    topics: ['SEO_NOTIFICATION'],
+    filter: ({ args, payload }) => args.email === payload.email
+  })
+  getSEOReport(
+    @Args() { email }: seoResultTypeInterface,
+    @Root() root: any
+  ) {
+    console.log(email)
+    return root
   }
 
 }
