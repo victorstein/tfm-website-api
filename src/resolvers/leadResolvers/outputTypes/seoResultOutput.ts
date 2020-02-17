@@ -19,4 +19,6 @@ export default class SEOResult {
   passed: test[]
   @Field(() => [test], { nullable: true })
   failed: test[]
+  @Field({ nullable: false })
+  email: string
 }
