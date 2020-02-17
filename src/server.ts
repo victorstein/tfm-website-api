@@ -1,5 +1,6 @@
 import 'reflect-metadata'
 import 'dotenv/config'
+import http from 'http'
 import { ApolloServer } from 'apollo-server-express'
 import express, { json } from 'express'
 import { buildSchema } from 'type-graphql'
@@ -8,6 +9,8 @@ import authChecker from './middlewares/authChecker'
 import { mongoose } from '@typegoose/typegoose'
 import helmet from 'helmet'
 import enforce from 'express-sslify'
+import Redis from "ioredis";
+import { RedisPubSub } from "graphql-redis-subscriptions";
 import setup from './utils/setup'
 import { cyan, red, gray } from 'chalk'
 import queryComplexityEvaluator from './utils/queryComplexityValidator/queryComplexity'
@@ -21,7 +24,7 @@ const contextService = require('request-context')
 // console.clear()
 
 // Get the neccesary env variables
-const { PORT, NODE_ENV, DB_USER, DB_PASS, DB_URI, ALLOWED_ORIGINS } = process.env;
+const { PORT, NODE_ENV, DB_USER, DB_PASS, DB_URI, ALLOWED_ORIGINS, REDIS_PORT, REDIS_URL } = process.env;
 
 (async () => {
   try {
@@ -34,10 +37,24 @@ const { PORT, NODE_ENV, DB_USER, DB_PASS, DB_URI, ALLOWED_ORIGINS } = process.en
     // Add context service middleware
     app.use(contextService.middleware('req'));
 
+    // configure Redis connection options
+    const options: Redis.RedisOptions = {
+      host: REDIS_URL,
+      port: Number(REDIS_PORT),
+      retryStrategy: (times: any) => Math.max(times * 100, 3000),
+    };
+
+    // create Redis-based pub-sub
+    const pubSub = new RedisPubSub({
+      publisher: new Redis(options),
+      subscriber: new Redis(options),
+    });
+
     // Create Schema
     const schema = await buildSchema({
       resolvers,
-      authChecker
+      authChecker,
+      pubSub
     })
 
     // Create production basic security
@@ -94,14 +111,24 @@ const { PORT, NODE_ENV, DB_USER, DB_PASS, DB_URI, ALLOWED_ORIGINS } = process.en
 
         console.log(red(err.message), gray(err.extensions?.code))
         return err
+      },
+      subscriptions: {
+        path: "/subscriptions"
       }
     })
 
     // Create middleware
     server.applyMiddleware({ app })
 
+    // Install subscription handler
+    const httpServer = http.createServer(app)
+    server.installSubscriptionHandlers(httpServer)
+
     // listen to port
-    app.listen(PORT, () => console.log(cyan(`Server running on http://localhost:${PORT}/graphql`)))
+    httpServer.listen(PORT, () => {
+      console.log(cyan(`Server running on http://localhost:${PORT}${server.graphqlPath}`))
+      console.log(cyan(`WSS running on wss://localhost:${PORT}${server.subscriptionsPath}`))
+    })
   } catch ({ message, code }) {
     console.log(red(message))
     throw new Error(message, code)
